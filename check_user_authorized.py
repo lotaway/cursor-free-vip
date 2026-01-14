@@ -97,17 +97,20 @@ def check_user_authorized(token: str, translator=None) -> bool:
                 'authorization': f'Bearer {token}',
                 'connect-protocol-version': '1',
                 'content-type': 'application/proto',
-                'user-agent': 'connect-es/1.6.1',
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/0.44.11 Chrome/128.0.6613.186 Electron/32.2.6 Safari/537.36',
                 'x-cursor-checksum': checksum,
-                'x-cursor-client-version': '0.48.7',
+                'x-cursor-client-version': '0.44.11',
+                'x-cursor-os': 'darwin',
                 'x-cursor-timezone': 'Asia/Shanghai',
                 'x-ghost-mode': 'false',
-                'Host': 'api2.cursor.sh'
+                'Sec-Ch-Ua': '"Not;A=Brand";v="24", "Chromium";v="128"',
+                'Sec-Ch-Ua-Mobile': "?0",
+                'Sec-Ch-Ua-Platform': '"macOS"'
             }
             
             print(f"{Fore.CYAN}{EMOJI['INFO']} {translator.get('auth_check.checking_usage_information') if translator else 'Checking usage information...'}{Style.RESET_ALL}")
             
-            # Make the request - this endpoint doesn't need a request body
+            # Make the request
             usage_response = requests.post(
                 'https://api2.cursor.sh/aiserver.v1.DashboardService/GetUsageBasedPremiumRequests',
                 headers=headers,
@@ -120,18 +123,30 @@ def check_user_authorized(token: str, translator=None) -> bool:
             if usage_response.status_code == 200:
                 print(f"{Fore.GREEN}{EMOJI['SUCCESS']} {translator.get('auth_check.user_authorized') if translator else 'User is authorized'}{Style.RESET_ALL}")
                 return True
-            elif usage_response.status_code == 401 or usage_response.status_code == 403:
-                print(f"{Fore.RED}{EMOJI['ERROR']} {translator.get('auth_check.user_unauthorized') if translator else 'User is unauthorized'}{Style.RESET_ALL}")
-                return False
-            else:
-                print(f"{Fore.YELLOW}{EMOJI['WARNING']} {translator.get('auth_check.unexpected_status_code', code=usage_response.status_code) if translator else f'Unexpected status code: {usage_response.status_code}'}{Style.RESET_ALL}")
+            
+            # Fallback check for Google Auth accounts (401/403 often happen with gRPC but not with REST)
+            if usage_response.status_code in [401, 403]:
+                print(f"{Fore.YELLOW}{EMOJI['WARNING']} {translator.get('auth_check.grpc_failed_trying_rest') if translator else 'Strict check failed, trying fallback validation...'}{Style.RESET_ALL}")
                 
-                # If the token at least looks like a valid JWT, consider it valid
-                if token.startswith('eyJ') and '.' in token and len(token) > 100:
-                    print(f"{Fore.YELLOW}{EMOJI['WARNING']} {translator.get('auth_check.jwt_token_warning') if translator else 'Token appears to be in JWT format, but API check returned an unexpected status code. The token might be valid but API access is restricted.'}{Style.RESET_ALL}")
+                rest_headers = {
+                    "User-Agent": headers['user-agent'],
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "x-cursor-client-version": "0.44.11"
+                }
+                
+                rest_response = requests.get(
+                    'https://api2.cursor.sh/auth/full_stripe_profile',
+                    headers=rest_headers,
+                    timeout=10
+                )
+                
+                if rest_response.status_code == 200:
+                    print(f"{Fore.GREEN}{EMOJI['SUCCESS']} {translator.get('auth_check.user_authorized_rest') if translator else 'User authorized via fallback check'}{Style.RESET_ALL}")
                     return True
                 
-                return False
+            print(f"{Fore.RED}{EMOJI['ERROR']} {translator.get('auth_check.user_unauthorized') if translator else 'User is unauthorized'}{Style.RESET_ALL}")
+            return False
         except Exception as e:
             print(f"{Fore.YELLOW}{EMOJI['WARNING']} Error checking usage: {str(e)}{Style.RESET_ALL}")
             

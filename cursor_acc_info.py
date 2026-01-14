@@ -35,9 +35,14 @@ class Config:
     NAME_LOWER = "cursor"
     NAME_CAPITALIZE = "Cursor"
     BASE_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/0.44.11 Chrome/128.0.6613.186 Electron/32.2.6 Safari/537.36",
         "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-cursor-client-version": "0.44.11",
+        "x-cursor-os": "darwin",
+        "Sec-Ch-Ua": '"Not;A=Brand";v="24", "Chromium";v="128"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"macOS"'
     }
 
 class UsageManager:
@@ -164,6 +169,13 @@ def get_token_from_sqlite(sqlite_path):
     try:
         conn = sqlite3.connect(sqlite_path)
         cursor = conn.cursor()
+        
+        cursor.execute("SELECT value FROM ItemTable WHERE key = 'cursorAuth/accessToken'")
+        row = cursor.fetchone()
+        if row and row[0]:
+            conn.close()
+            return row[0]
+            
         cursor.execute("SELECT value FROM ItemTable WHERE key LIKE '%token%'")
         rows = cursor.fetchall()
         conn.close()
@@ -172,8 +184,8 @@ def get_token_from_sqlite(sqlite_path):
             try:
                 value = row[0]
                 if isinstance(value, str) and len(value) > 20:
-                    return value
-                # try to parse JSON
+                    if value.startswith('ey') or 'user_' in value:
+                        return value
                 data = json.loads(value)
                 if isinstance(data, dict) and 'token' in data:
                     return data['token']
